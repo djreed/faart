@@ -1,11 +1,8 @@
 package main
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"time"
@@ -34,30 +31,26 @@ func client(ctx context.Context, address string, reader io.Reader) (err error) {
 	doneChan := make(chan error, 1)
 
 	go func() {
-		for {
-			bytesOfData, err := ioutil.ReadAll(reader)
-			if err != nil {
-				doneChan <- err
-				return
-			}
-
-			log.OUT.Printf("data-read: bytes=%d -> %s\n", len(bytesOfData), bytesOfData)
-
-			compressedData := new(bytes.Buffer)
-			compressedWriter := gzip.NewWriter(compressedData)
-			compressedWriter.Write(bytesOfData)
-			compressedWriter.Close()
-
-			datagram := packet.NewDatagram()
-			copy(datagram.Data(), compressedData.Bytes())
-
-			n, err := conn.Write(datagram.Packet)
-			if err != nil {
-				log.OUT.Panic(err)
-			}
-
-			log.OUT.Printf("data-written: bytes=%d\n", n)
+		decompressedData := []byte{72, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100}
+		if err != nil {
+			doneChan <- err
+			return
 		}
+
+		compressedData, err := packet.Compress(decompressedData)
+		if err != nil {
+			panic(err)
+		}
+
+		datagram := packet.CreateDatagram(1, 5, compressedData)
+
+		_, err = conn.Write(datagram)
+		if err != nil {
+			log.OUT.Panic(err)
+		}
+
+		log.OUT.Printf("Original = '%s'\n", decompressedData)
+		log.OUT.Printf("Client Data = '%s', Valid = %v\n", compressedData, datagram.Validate())
 	}()
 
 	select {

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"compress/gzip"
 	"context"
 	"net"
 
@@ -18,35 +16,29 @@ const maxBufferSize = 1500
 func server(ctx context.Context, address string) (err error) {
 	log.OUT.Println("Starting Server")
 
-	pc, err := net.ListenPacket("udp", address)
+	conn, err := net.ListenPacket("udp", address)
 	if err != nil {
 		return
 	}
-	defer pc.Close()
+	defer conn.Close()
 
 	doneChan := make(chan error, 1)
 
 	go func() {
-		for {
-			datagram := packet.NewDatagram()
-			n, addr, err := pc.ReadFrom(datagram.Packet)
-			if err != nil {
-				doneChan <- err
-				return
-			}
-
-			log.OUT.Printf("data-received: bytes=%d from=%s\n", n, addr.String())
-
-			gzReader, err := gzip.NewReader(bytes.NewBuffer(datagram.Data()))
-			if err != nil {
-				log.OUT.Panic(err)
-			}
-
-			bytesOfData := make([]byte, packet.DATA_SIZE)
-			gzReader.Read(bytesOfData)
-
-			log.OUT.Printf("data-decoded: bytes=%d from=%s -> %s\n", n, addr.String(), bytesOfData)
+		datagram := packet.NewDatagram()
+		_, _, err := conn.ReadFrom(datagram)
+		if err != nil {
+			doneChan <- err
+			return
 		}
+
+		decompressedData, err := packet.Decompress(datagram.Packet())
+		if err != nil {
+			panic(err)
+		}
+
+		log.OUT.Printf("Server Data = '%s', Valid = %v\n", datagram.Packet(), datagram.Validate())
+		log.OUT.Printf("Decompressed = '%s'\n", decompressedData)
 	}()
 
 	select {
