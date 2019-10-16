@@ -21,10 +21,10 @@ type dataPacket struct {
 	data   []byte
 }
 
-func receiver(ctx context.Context) (err error) {
+func receiver(ctx context.Context) error {
 	conn, err := net.ListenPacket("udp4", "")
 	if err != nil {
-		return
+		return err
 	}
 	defer conn.Close()
 
@@ -42,11 +42,11 @@ func receiver(ctx context.Context) (err error) {
 		case packetData := <-data:
 			totalData = addDataToExisting(totalData, packetData)
 		case <-ctx.Done():
-			return
+			return nil
 		case err = <-done:
 			log.OUT.Printf("[completed]\n")
 			log.OUT.Print(string(totalData))
-			return
+			return nil
 		}
 	}
 }

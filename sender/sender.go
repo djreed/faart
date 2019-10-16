@@ -14,7 +14,7 @@ import (
 
 var timeout = time.Duration(10 * time.Second)
 
-func sender(ctx context.Context, address string, reader io.Reader) (err error) {
+func sender(ctx context.Context, address string, reader io.Reader) error {
 	raddr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
 		return err
@@ -33,10 +33,10 @@ func sender(ctx context.Context, address string, reader io.Reader) (err error) {
 
 	select {
 	case <-ctx.Done():
-		return
+		return nil
 	case err = <-done:
 		log.OUT.Printf("[completed]\n")
-		return
+		return nil
 	}
 }
 
