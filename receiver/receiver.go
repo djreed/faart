@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 	"strings"
-	"time"
 
 	"github.com/djreed/faart/log"
 	"github.com/djreed/faart/packet"
@@ -55,7 +54,7 @@ func handleConn(done chan error, conn net.PacketConn, data chan dataPacket) {
 	for {
 		datagram := packet.NewDatagram()
 
-		conn.SetDeadline(time.Now().Add(time.Duration(5 * time.Second)))
+		// conn.SetDeadline(time.Now().Add(time.Duration(5 * time.Second)))
 		_, _, err := conn.ReadFrom(datagram)
 		if err != nil {
 			done <- err
