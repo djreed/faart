@@ -56,10 +56,9 @@ func handleConn(done chan error, conn io.Writer, reader io.Reader) {
 
 	for order := 0; (order * packet.PACKET_SIZE) < len(compressedData); order++ {
 		offset := uint32(order * packet.PACKET_SIZE)
-		dataEnd := offset + packet.PACKET_SIZE
 		packetSequence := uint32(seqBase + order)
 
-		datagram := packet.CreateDatagram(packetSequence, offset, compressedData[offset:dataEnd])
+		datagram := packet.CreateDatagram(packetSequence, offset, compressedData[offset:])
 
 		_, err = conn.Write(datagram)
 		if err != nil {
