@@ -1,7 +1,6 @@
 package packet
 
 import (
-	"bytes"
 	"compress/flate"
 )
 
@@ -9,19 +8,23 @@ const (
 	COMPRESS_FOCUS = flate.BestCompression
 )
 
-func Compress(src []byte) ([]byte, error) {
-	compressedData := new(bytes.Buffer)
-	writer, _ := flate.NewWriter(compressedData, COMPRESS_FOCUS)
-	writer.Write(src)
-	writer.Close()
-	return compressedData.Bytes(), nil
+func Compress(baseData []byte) ([]byte, error) {
+	return baseData, nil
+	// compressedData := bytes.NewBuffer(baseData)
+	// writer, _ := flate.NewWriter(compressedData, COMPRESS_FOCUS)
+	// _, err := writer.Write(baseData)
+	// defer writer.Close()
+	// writer.Flush()
+	// return compressedData.Bytes(), err
 }
 
 func Decompress(compressed []byte) ([]byte, error) {
-	compressedData := bytes.NewBuffer(compressed)
-	reader := flate.NewReader(compressedData)
-	data := make([]byte, 0)
-	for n, _ := reader.Read(data); n > 0; {
-	}
-	return data, nil
+	return compressed, nil
+	// compressedData := bytes.NewBuffer(compressed)
+	// // decompressedData := bytes.NewBuffer(make([]byte, UPPER_BOUND))
+	// reader, err := zlib.NewReader(compressedData)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// return ioutil.ReadAll(reader)
 }
