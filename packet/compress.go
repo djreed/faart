@@ -3,7 +3,6 @@ package packet
 import (
 	"bytes"
 	"compress/flate"
-	"io/ioutil"
 )
 
 const (
@@ -21,5 +20,8 @@ func Compress(src []byte) ([]byte, error) {
 func Decompress(compressed []byte) ([]byte, error) {
 	compressedData := bytes.NewBuffer(compressed)
 	reader := flate.NewReader(compressedData)
-	return ioutil.ReadAll(reader)
+	data := make([]byte, 0)
+	for n, _ := reader.Read(data); n > 0; {
+	}
+	return data, nil
 }
