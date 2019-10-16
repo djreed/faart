@@ -17,12 +17,12 @@ var timeout = time.Duration(10 * time.Second)
 func sender(ctx context.Context, address string, reader io.Reader) (err error) {
 	raddr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
-		return
+		return err
 	}
 
 	conn, err := net.DialUDP("udp4", nil, raddr)
 	if err != nil {
-		return
+		return err
 	}
 
 	defer conn.Close()

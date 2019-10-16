@@ -14,5 +14,7 @@ func main() {
 	ctx := context.TODO()
 	target := os.Args[1]
 	source := os.Stdin
-	sender(ctx, target, source)
+	if err := sender(ctx, target, source); err != nil {
+		panic(err)
+	}
 }
