@@ -1,4 +1,4 @@
-package logging
+package log
 
 import (
 	"io"
@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-const LOG_FLAGS = /* log.Ldate | log.Ltime |*/ log.Lmicroseconds /*| log.Lshortfile*/
+const LOG_FLAGS = log.Ldate | log.Ltime | log.Lmicroseconds
 
 var ERR = MakeLogger(os.Stderr)
 var OUT = MakeLogger(os.Stdout)

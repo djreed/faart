@@ -1,5 +1,4 @@
-build_send:
-	pushd send; make; popd
+OUTFILE=faart
 
-build_recv:
-	pushd recv; make; popd
+build:
+	go build -o $(OUTFILE) .
