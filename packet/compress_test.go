@@ -26,3 +26,7 @@ func TestCompressionInvertible(t *testing.T) {
 	decompressed, _ := Decompress(compressed)
 	assert.Equal(t, sample, decompressed)
 }
+
+func TestIdent(t *testing.T) {
+
+}

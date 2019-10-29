@@ -1,27 +1,48 @@
 package main
 
 import (
-	"context"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/djreed/faart/log"
 	"github.com/djreed/faart/packet"
+	"github.com/djreed/faart/shared"
 )
 
 // maxBufferSize specifies the size of the buffers that
 // are used to temporarily hold data from the UDP packets
 // that we receive.
 const maxBufferSize = 1500
+const STARTUP_WAIT = 30 * time.Second
+const TIMEOUT_MS = 3000
 
-type dataPacket struct {
-	seq    uint32
-	offset uint32
-	data   []byte
+const RECV_TEMPLATE = "[recv data] %d (%d) %s\n"
+
+var (
+	datagrams = make(shared.DataMap)
+
+	dataChan = shared.NewDataChan()
+	ackChan  = make(chan AckPacket, shared.ACK_BUFFER)
+
+	doneRecvData = make(shared.DoneChan, 1)
+	doneSendAck  = make(shared.DoneChan, 1)
+
+	completed = make(shared.DoneChan, 1)
+
+	lastAck time.Time
+)
+
+type AckPacket struct {
+	addr *net.UDPAddr
+	ack  packet.Ack
 }
 
-func receiver(ctx context.Context) error {
-	conn, err := net.ListenPacket("udp4", "")
+type AckPacketChan chan AckPacket
+
+func receiver() error {
+	localAddr := new(net.UDPAddr)
+	conn, err := net.ListenUDP("udp4", localAddr)
 	if err != nil {
 		return err
 	}
@@ -29,65 +50,80 @@ func receiver(ctx context.Context) error {
 
 	splitAddr := strings.Split(conn.LocalAddr().String(), ":")
 	log.ERR.Printf("[bound] %s", splitAddr[len(splitAddr)-1])
-
-	done := make(chan error, 1)
-	data := make(chan dataPacket)
 	totalData := make([]byte, 0)
 
-	go handleConn(done, conn, data)
+	go HandleDatagrams(conn, dataChan)
+	go SendAcks(conn, ackChan)
 
+	timeout := time.After(STARTUP_WAIT)
 	for {
 		select {
-		case packetData := <-data:
-			totalData = addDataToExisting(totalData, packetData)
-		case <-ctx.Done():
-			return nil
-		case err = <-done:
-			log.OUT.Printf("[completed]\n")
-			log.OUT.Print(string(totalData))
+		case datagram := <-dataChan:
+			totalData = appendDatagram(totalData, datagram)
+			timeout = time.After(time.Duration(TIMEOUT_MS * time.Millisecond))
+			continue
+		case <-timeout:
+			log.ERR.Printf("[completed]\n")
+			printData(totalData)
 			return nil
 		}
 	}
 }
 
-func handleConn(done chan error, conn net.PacketConn, data chan dataPacket) {
+func HandleDatagrams(conn *net.UDPConn, datachan shared.DataChannel) {
 	for {
 		datagram := packet.NewDatagram()
-
-		// conn.SetDeadline(time.Now().Add(time.Duration(5 * time.Second)))
-		_, _, err := conn.ReadFrom(datagram)
-		if err != nil {
-			done <- err
-			return
+		read, retAddr, _ := conn.ReadFromUDP(datagram) // TODO error handling
+		if read > 0 {
+			success := AcceptDatagram(datagram)
+			if success {
+				datachan <- datagram
+				ackChan <- AckPacket{addr: retAddr, ack: packet.CreateAck(datagram)}
+			}
 		}
-
-		if !datagram.Validate() {
-			log.ERR.Printf("[recv corrupt packet]\n")
-			continue
-		}
-
-		decompressedData, err := packet.Decompress(datagram.Packet())
-		if err != nil {
-			panic(err)
-		}
-
-		pack := dataPacket{
-			seq:    datagram.Headers().Sequence(),
-			offset: datagram.Headers().Offset(),
-			data:   decompressedData,
-		}
-		data <- pack
-
-		log.ERR.Printf("[recv data] %d (%d) ACCEPTED (TODO ORDER)\n", datagram.Headers().Offset(), len(datagram.Packet()))
 	}
 }
 
-func addDataToExisting(existing []byte, data dataPacket) []byte {
-	dataEnd := int(data.offset) + len(data.data) - 1
-	missing := dataEnd - len(existing)
-	if missing > 0 {
-		existing = append(existing, make([]byte, missing)...)
+func AcceptDatagram(datagram packet.Datagram) bool {
+	_, existing := datagrams[datagram.Headers().Offset()]
+	if !existing {
+		if !datagram.Validate() {
+			log.ERR.Printf("[recv corrupt packet]\n")
+			return false
+		}
+		datagrams[datagram.Headers().Offset()] = datagram
+		log.ERR.Printf(RECV_TEMPLATE, datagram.Headers().Offset(), datagram.Headers().Length(), shared.ACCEPTED_OUT_ORDER)
+	} else {
+		log.ERR.Printf(RECV_TEMPLATE, datagram.Headers().Offset(), datagram.Headers().Length(), shared.IGNORED)
 	}
-	copy(existing[data.offset:dataEnd], data.data)
+	return !existing
+}
+
+func SendAcks(conn *net.UDPConn, ackChan AckPacketChan) {
+	for {
+		select {
+		case ack := <-ackChan:
+			shared.SendAck(conn, ack.addr, ack.ack)
+			continue
+		}
+	}
+}
+
+func appendDatagram(existing []byte, datagram packet.Datagram) []byte {
+	dataEnd := uint32(datagram.Headers().Offset()) + uint32(datagram.Headers().Length())
+	missingLen := dataEnd - uint32(cap(existing))
+	if missingLen > 0 {
+		// Pad out existing bytes with 0s
+		existing = append(existing, make([]byte, missingLen)...)
+		copy(existing[datagram.Headers().Offset():dataEnd], datagram.Packet()[0:datagram.Headers().Length()])
+	}
 	return existing
+}
+
+func printData(data []byte) {
+	decompressedData, err := packet.Decompress(data)
+	if err != nil {
+		panic(err)
+	}
+	log.OUT.Print(string(decompressedData)) // TODO reassemble data
 }

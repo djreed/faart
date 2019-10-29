@@ -4,15 +4,27 @@ import (
 	"context"
 	"io"
 	"io/ioutil"
-	"math/rand"
 	"net"
 	"time"
 
 	"github.com/djreed/faart/log"
 	"github.com/djreed/faart/packet"
+	"github.com/djreed/faart/shared"
 )
 
-var timeout = time.Duration(10 * time.Second)
+var (
+	queueTimeout = time.Duration(1 * time.Second)
+
+	datagrams = make(shared.DataMap)
+
+	dataChan = shared.NewDataChan()
+	ackChan  = shared.NewAckChan()
+
+	doneSendData = make(shared.DoneChan, 1)
+	doneRecvAck  = make(shared.DoneChan, 1)
+
+	completed = make(shared.DoneChan, 1)
+)
 
 func sender(ctx context.Context, address string, reader io.Reader) error {
 	raddr, err := net.ResolveUDPAddr("udp", address)
@@ -27,23 +39,19 @@ func sender(ctx context.Context, address string, reader io.Reader) error {
 
 	defer conn.Close()
 
-	done := make(chan error, 1)
-
-	go handleConn(done, conn, reader)
+	go handleConn(conn, reader)
 
 	select {
-	case <-ctx.Done():
-		return nil
-	case err = <-done:
-		log.OUT.Printf("[completed]\n")
-		return nil
+	case err = <-completed:
+		log.ERR.Printf("[completed]\n")
+		return err
 	}
 }
 
-func handleConn(done chan error, conn io.Writer, reader io.Reader) {
+func handleConn(conn *net.UDPConn, reader io.Reader) {
 	decompressedData, err := ioutil.ReadAll(reader)
 	if err != nil {
-		done <- err
+		completed <- err
 		return
 	}
 
@@ -52,21 +60,67 @@ func handleConn(done chan error, conn io.Writer, reader io.Reader) {
 		panic(err)
 	}
 
-	seqBase := rand.Int()
-
-	for order := 0; (order * packet.PACKET_SIZE) < len(compressedData); order++ {
-		offset := uint32(order * packet.PACKET_SIZE)
-		packetSequence := uint32(seqBase + order)
-
-		datagram := packet.CreateDatagram(packetSequence, offset, compressedData[offset:])
-
-		_, err = conn.Write(datagram)
-		if err != nil {
-			log.OUT.Panic(err)
-		}
-
-		log.ERR.Printf("[send data] %d (%d)\n", datagram.Headers().Offset(), len(datagram.Packet()))
+	// Populate packet map
+	for offset := 0; offset < len(compressedData); offset += packet.PACKET_SIZE {
+		offset := packet.OffsetVal(offset)
+		datagram := packet.CreateDatagram(offset, compressedData[offset:])
+		datagrams[offset] = datagram
 	}
 
-	done <- nil
+	dataChan = make(chan packet.Datagram, len(datagrams))
+	ackChan = make(chan packet.Ack, len(datagrams))
+
+	go QueueData(dataChan)
+	go SendData(conn, dataChan)
+	go QueueAcks(conn, ackChan)
+	go HandleAcks(ackChan)
+}
+
+func QueueData(dataChan shared.DataChannel) {
+	for {
+		for _, datagram := range datagrams {
+			dataChan <- datagram
+		}
+		time.Sleep(queueTimeout)
+	}
+}
+
+func SendData(conn io.Writer, dataChan shared.DataChannel) {
+	for {
+		select {
+		case datagram := <-dataChan:
+			shared.SendDatagram(conn, datagram)
+			log.ERR.Printf("[send data] %d (%d)\n", datagram.Headers().Offset(), datagram.Headers().Length())
+			continue
+		case <-doneSendData:
+			return
+		}
+	}
+}
+
+func QueueAcks(conn net.PacketConn, ackChan shared.AckChannel) {
+	for {
+		ack := packet.NewAck()
+		read, _, _ := conn.ReadFrom(ack)
+		if read > 0 {
+			ackChan <- ack
+		}
+	}
+}
+
+func HandleAcks(ackChan shared.AckChannel) {
+	for {
+		select {
+		case ack := <-ackChan:
+			log.ERR.Printf("[recv ack] %d\n", ack.Offset())
+			delete(datagrams, ack.Offset())
+			if len(datagrams) == 0 {
+				doneSendData <- nil
+				doneRecvAck <- nil
+			}
+		case <-doneRecvAck:
+			completed <- nil
+			return
+		}
+	}
 }
