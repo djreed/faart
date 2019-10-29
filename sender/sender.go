@@ -61,10 +61,11 @@ func handleConn(conn *net.UDPConn, reader io.Reader) {
 	}
 
 	// Populate packet map
-	for offset := 0; offset < len(compressedData); offset += packet.PACKET_SIZE {
-		offset := packet.OffsetVal(offset)
-		datagram := packet.CreateDatagram(offset, compressedData[offset:])
-		datagrams[offset] = datagram
+	for sequence := 0; sequence*packet.PACKET_SIZE < len(compressedData); sequence++ {
+		seqID := packet.SeqID(sequence)
+		offset := packet.OffsetVal(sequence * packet.PACKET_SIZE)
+		datagram := packet.CreateDatagram(seqID, offset, compressedData[offset:])
+		datagrams[seqID] = datagram
 	}
 
 	dataChan = make(chan packet.Datagram, len(datagrams))
@@ -113,7 +114,7 @@ func HandleAcks(ackChan shared.AckChannel) {
 		select {
 		case ack := <-ackChan:
 			log.ERR.Printf("[recv ack] %d\n", ack.Offset())
-			delete(datagrams, ack.Offset())
+			delete(datagrams, ack.Sequence())
 			if len(datagrams) == 0 {
 				doneSendData <- nil
 				doneRecvAck <- nil

@@ -15,9 +15,7 @@ import (
 // that we receive.
 const maxBufferSize = 1500
 const STARTUP_WAIT = 30 * time.Second
-const TIMEOUT_MS = 3000
-
-const RECV_TEMPLATE = "[recv data] %d (%d) %s\n"
+const DATA_TIMEOUT = time.Duration(3 * time.Second)
 
 var (
 	datagrams = make(shared.DataMap)
@@ -31,6 +29,8 @@ var (
 	completed = make(shared.DoneChan, 1)
 
 	lastAck time.Time
+
+	compressedSize = 0
 )
 
 type AckPacket struct {
@@ -50,7 +50,6 @@ func receiver() error {
 
 	splitAddr := strings.Split(conn.LocalAddr().String(), ":")
 	log.ERR.Printf("[bound] %s", splitAddr[len(splitAddr)-1])
-	totalData := make([]byte, 0)
 
 	go HandleDatagrams(conn, dataChan)
 	go SendAcks(conn, ackChan)
@@ -58,13 +57,13 @@ func receiver() error {
 	timeout := time.After(STARTUP_WAIT)
 	for {
 		select {
-		case datagram := <-dataChan:
-			totalData = appendDatagram(totalData, datagram)
-			timeout = time.After(time.Duration(TIMEOUT_MS * time.Millisecond))
+		case <-dataChan:
+			timeout = time.After(DATA_TIMEOUT)
 			continue
 		case <-timeout:
 			log.ERR.Printf("[completed]\n")
-			printData(totalData)
+			byteData := flattenMapData(datagrams)
+			printData(byteData)
 			return nil
 		}
 	}
@@ -84,14 +83,16 @@ func HandleDatagrams(conn *net.UDPConn, datachan shared.DataChannel) {
 	}
 }
 
+const RECV_TEMPLATE = "[recv data] %d (%d) %s\n"
+
 func AcceptDatagram(datagram packet.Datagram) bool {
-	_, existing := datagrams[datagram.Headers().Offset()]
+	_, existing := datagrams[datagram.Headers().Sequence()]
 	if !existing {
 		if !datagram.Validate() {
 			log.ERR.Printf("[recv corrupt packet]\n")
 			return false
 		}
-		datagrams[datagram.Headers().Offset()] = datagram
+		datagrams[datagram.Headers().Sequence()] = datagram
 		log.ERR.Printf(RECV_TEMPLATE, datagram.Headers().Offset(), datagram.Headers().Length(), shared.ACCEPTED_OUT_ORDER)
 	} else {
 		log.ERR.Printf(RECV_TEMPLATE, datagram.Headers().Offset(), datagram.Headers().Length(), shared.IGNORED)
@@ -109,15 +110,17 @@ func SendAcks(conn *net.UDPConn, ackChan AckPacketChan) {
 	}
 }
 
-func appendDatagram(existing []byte, datagram packet.Datagram) []byte {
-	dataEnd := uint32(datagram.Headers().Offset()) + uint32(datagram.Headers().Length())
-	missingLen := dataEnd - uint32(cap(existing))
-	if missingLen > 0 {
-		// Pad out existing bytes with 0s
-		existing = append(existing, make([]byte, missingLen)...)
-		copy(existing[datagram.Headers().Offset():dataEnd], datagram.Packet()[0:datagram.Headers().Length()])
+func flattenMapData(datagramMap shared.DataMap) []byte {
+	finalPacket := datagramMap[packet.SeqID(len(datagramMap)-1)]
+	fileSize := uint32(finalPacket.Headers().Offset()) + uint32(finalPacket.Headers().Length())
+	data := make([]byte, fileSize)
+	for i := packet.SeqID(0); i < packet.SeqID(len(datagramMap)); i++ {
+		offset := uint32(datagramMap[i].Headers().Offset())
+		length := uint32(datagramMap[i].Headers().Length())
+		datagramPacket := datagramMap[i].Packet()[0:length]
+		copy(data[offset:], datagramPacket[:])
 	}
-	return existing
+	return data
 }
 
 func printData(data []byte) {
@@ -125,5 +128,6 @@ func printData(data []byte) {
 	if err != nil {
 		panic(err)
 	}
-	log.OUT.Print(string(decompressedData)) // TODO reassemble data
+
+	log.LOG.Print(string(decompressedData)) // TODO reassemble data
 }

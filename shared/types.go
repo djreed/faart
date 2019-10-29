@@ -14,7 +14,7 @@ type (
 	DoneChan    chan error
 )
 
-type DataMap map[packet.OffsetVal]packet.Datagram
+type DataMap map[packet.SeqID]packet.Datagram
 
 const (
 	ACCEPTED_IN_ORDER  = "ACCEPTED (in-order)"
