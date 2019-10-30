@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 )
 
@@ -11,10 +10,9 @@ func main() {
 		panic("Must pass in a single argument: <recv_host>:<recv_port>\nData will be read from STDIN")
 	}
 
-	ctx := context.TODO()
 	target := os.Args[1]
 	source := os.Stdin
-	if err := sender(ctx, target, source); err != nil {
+	if err := sender(target, source); err != nil {
 		panic(err)
 	}
 }

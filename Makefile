@@ -1,6 +1,6 @@
 OUTFILE="bundle"
-PROJECT_GOFILES="go.mod log packet receiver sender shared vendor"
-TEST_DATA="test_data"
+PROJECT_GOFILES=go.mod go.sum log packet receiver sender shared vendor Makefile
+TEST_DATA=test_data
 
 build_all: build_send build_recv move
 
@@ -16,7 +16,7 @@ build_send_linux:
 	pushd sender; make build_linux; popd
 
 build_recv_linux:
-	pushd sender; make build_linux; popd
+	pushd receiver; make build_linux; popd
 
 move:
 	mv sender/3700send .
@@ -26,7 +26,7 @@ vendor:
 	GO111MODULE=on go mod vendor
 
 bundle:
-	tar -czvf $(OUTFILE).tar.gz $(PROJECT_GOFILES)
+	tar -czvf $(OUTFILE).tar.gz $(PROJECT_GOFILES) $(TEST_DATA) 3700recv 3700send
 
 copy:
 	scp -r $(OUTFILE).tar.gz reedda@gordon.ccs.neu.edu:/home/reedda/cs3700/project3/

@@ -28,10 +28,11 @@ const (
 	LENGTH_SIZE    = 4
 
 	// // Whether you're completely done with the data being send
-	// DONE_FLAG_POINTER = LENGTH_POINTER + LENGTH_SIZE
-	// DONE_FLAG_SIZE    = 4
+	DONE_FLAG_POINTER = LENGTH_POINTER + LENGTH_SIZE
+	DONE_FLAG_SIZE    = 1
 
-	HEADER_SIZE = LENGTH_POINTER + LENGTH_SIZE
+	// HEADER_SIZE = LENGTH_POINTER + LENGTH_SIZE
+	HEADER_SIZE = DONE_FLAG_POINTER + DONE_FLAG_SIZE
 
 	PACKET_SIZE = DATAGRAM_SIZE - HEADER_SIZE
 )
@@ -47,13 +48,7 @@ type SeqID uint32
 type OffsetVal uint32
 type ByteData []byte
 type PacketLen uint32
-
-// type DoneFlag uint32
-
-const (
-	DONE = iota
-	MORE
-)
+type DoneFlag bool
 
 func NewDatagram() Datagram {
 	return make([]byte, DATAGRAM_SIZE)
@@ -65,14 +60,14 @@ func CreateDatagram(sequence SeqID, offset OffsetVal, packet ByteData) Datagram 
 	dg.Headers().SetSequence(sequence)
 	dg.Headers().SetOffset(offset)
 
-	copy(dg.Packet(), packet[0:PACKET_SIZE])
+	copy(dg.Packet(), packet[:])
 
 	dataChecksum := CalculateChecksum(dg.Packet())
 	dg.Headers().SetChecksum(dataChecksum)
 
 	packetSize := PacketLen(math.Min(float64(len(packet)), PACKET_SIZE))
 	dg.Headers().SetLength(packetSize)
-	// dg.Headers().SetDone(MORE)
+	dg.Headers().SetDone(false)
 
 	return dg
 }
@@ -101,6 +96,18 @@ func bytesToUint32(b []byte) uint32 {
 
 func uint32ToBytes(n uint32) []byte {
 	return (*[4]byte)(unsafe.Pointer(&n))[:]
+}
+
+func bytesToBool(b []byte) bool {
+	return bytes.Contains(b, []byte{1})
+}
+
+func boolToBytes(b bool) []byte {
+	if b {
+		return []byte{1}
+	} else {
+		return []byte{0}
+	}
 }
 
 type Header []byte
@@ -139,13 +146,13 @@ func (h Header) SetLength(length PacketLen) {
 	copy(h[LENGTH_POINTER:LENGTH_POINTER+LENGTH_SIZE], uint32ToBytes(uint32(length)))
 }
 
-// // Whether this is the last packet
-// func (h Header) Done() DoneFlag {
-// 	return DoneFlag(bytesToUint32(h[DONE_FLAG_POINTER : DONE_FLAG_POINTER+DONE_FLAG_SIZE]))
-// }
-// func (h Header) SetDone(done DoneFlag) {
-// 	copy(h[DONE_FLAG_POINTER:DONE_FLAG_POINTER+DONE_FLAG_SIZE], uint32ToBytes(uint32(done)))
-// }
+// Whether this is the last packet
+func (h Header) Done() DoneFlag {
+	return DoneFlag(bytesToBool((h[DONE_FLAG_POINTER : DONE_FLAG_POINTER+DONE_FLAG_SIZE])))
+}
+func (h Header) SetDone(done DoneFlag) {
+	copy(h[DONE_FLAG_POINTER:DONE_FLAG_POINTER+DONE_FLAG_SIZE], boolToBytes(bool(done)))
+}
 
 /////////////////////
 /* Datagram Packet */

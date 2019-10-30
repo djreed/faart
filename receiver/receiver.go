@@ -1,36 +1,19 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"strings"
-	"time"
 
 	"github.com/djreed/faart/log"
 	"github.com/djreed/faart/packet"
 	"github.com/djreed/faart/shared"
 )
 
-// maxBufferSize specifies the size of the buffers that
-// are used to temporarily hold data from the UDP packets
-// that we receive.
-const maxBufferSize = 1500
-const STARTUP_WAIT = 30 * time.Second
-const DATA_TIMEOUT = time.Duration(3 * time.Second)
-
 var (
 	datagrams = make(shared.DataMap)
-
-	dataChan = shared.NewDataChan()
-	ackChan  = make(chan AckPacket, shared.ACK_BUFFER)
-
-	doneRecvData = make(shared.DoneChan, 1)
-	doneSendAck  = make(shared.DoneChan, 1)
-
-	completed = make(shared.DoneChan, 1)
-
-	lastAck time.Time
-
-	compressedSize = 0
+	ackChan   = make(chan AckPacket, shared.ACK_BUFFER)
+	doneData  = make(shared.DoneChan, 1)
 )
 
 type AckPacket struct {
@@ -51,16 +34,12 @@ func receiver() error {
 	splitAddr := strings.Split(conn.LocalAddr().String(), ":")
 	log.ERR.Printf("[bound] %s", splitAddr[len(splitAddr)-1])
 
-	go HandleDatagrams(conn, dataChan)
+	go HandleDatagrams(conn, doneData)
 	go SendAcks(conn, ackChan)
 
-	timeout := time.After(STARTUP_WAIT)
 	for {
 		select {
-		case <-dataChan:
-			timeout = time.After(DATA_TIMEOUT)
-			continue
-		case <-timeout:
+		case <-doneData:
 			log.ERR.Printf("[completed]\n")
 			byteData := flattenMapData(datagrams)
 			printData(byteData)
@@ -69,15 +48,17 @@ func receiver() error {
 	}
 }
 
-func HandleDatagrams(conn *net.UDPConn, datachan shared.DataChannel) {
+func HandleDatagrams(conn *net.UDPConn, doneChan shared.DoneChan) {
 	for {
 		datagram := packet.NewDatagram()
-		read, retAddr, _ := conn.ReadFromUDP(datagram) // TODO error handling
+		read, retAddr, _ := conn.ReadFromUDP(datagram)
 		if read > 0 {
-			success := AcceptDatagram(datagram)
-			if success {
-				datachan <- datagram
+			needAck, final := AcceptDatagram(datagram)
+			if needAck {
 				ackChan <- AckPacket{addr: retAddr, ack: packet.CreateAck(datagram)}
+			}
+			if final {
+				doneChan <- nil
 			}
 		}
 	}
@@ -85,19 +66,23 @@ func HandleDatagrams(conn *net.UDPConn, datachan shared.DataChannel) {
 
 const RECV_TEMPLATE = "[recv data] %d (%d) %s\n"
 
-func AcceptDatagram(datagram packet.Datagram) bool {
+func AcceptDatagram(datagram packet.Datagram) (bool, bool) {
+	if datagram.Headers().Done() {
+		return true, true
+	}
+
 	_, existing := datagrams[datagram.Headers().Sequence()]
 	if !existing {
 		if !datagram.Validate() {
 			log.ERR.Printf("[recv corrupt packet]\n")
-			return false
+			return false, false
 		}
 		datagrams[datagram.Headers().Sequence()] = datagram
 		log.ERR.Printf(RECV_TEMPLATE, datagram.Headers().Offset(), datagram.Headers().Length(), shared.ACCEPTED_OUT_ORDER)
 	} else {
 		log.ERR.Printf(RECV_TEMPLATE, datagram.Headers().Offset(), datagram.Headers().Length(), shared.IGNORED)
 	}
-	return !existing
+	return !existing, false
 }
 
 func SendAcks(conn *net.UDPConn, ackChan AckPacketChan) {
@@ -111,14 +96,15 @@ func SendAcks(conn *net.UDPConn, ackChan AckPacketChan) {
 }
 
 func flattenMapData(datagramMap shared.DataMap) []byte {
-	finalPacket := datagramMap[packet.SeqID(len(datagramMap)-1)]
+	packetCount := len(datagramMap)
+	finalPacket := datagramMap[packet.SeqID(packetCount-1)]
 	fileSize := uint32(finalPacket.Headers().Offset()) + uint32(finalPacket.Headers().Length())
 	data := make([]byte, fileSize)
 	for i := packet.SeqID(0); i < packet.SeqID(len(datagramMap)); i++ {
 		offset := uint32(datagramMap[i].Headers().Offset())
 		length := uint32(datagramMap[i].Headers().Length())
 		datagramPacket := datagramMap[i].Packet()[0:length]
-		copy(data[offset:], datagramPacket[:])
+		copy(data[offset:offset+length], datagramPacket[:])
 	}
 	return data
 }
@@ -128,6 +114,5 @@ func printData(data []byte) {
 	if err != nil {
 		panic(err)
 	}
-
-	log.LOG.Print(string(decompressedData)) // TODO reassemble data
+	fmt.Printf("%s", decompressedData)
 }

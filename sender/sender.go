@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"io"
 	"io/ioutil"
 	"net"
@@ -12,21 +11,27 @@ import (
 	"github.com/djreed/faart/shared"
 )
 
+const (
+	SENDING        = 0
+	VALIDATING_END = 1
+)
+
 var (
-	queueTimeout = time.Duration(1 * time.Second)
+	sendTimeout = time.Duration(1000 * time.Millisecond)
+	doneTimeout = time.Duration(100 * time.Millisecond)
 
 	datagrams = make(shared.DataMap)
 
 	dataChan = shared.NewDataChan()
 	ackChan  = shared.NewAckChan()
 
-	doneSendData = make(shared.DoneChan, 1)
-	doneRecvAck  = make(shared.DoneChan, 1)
-
 	completed = make(shared.DoneChan, 1)
+	state     = SENDING
+
+	maxCount = -1
 )
 
-func sender(ctx context.Context, address string, reader io.Reader) error {
+func sender(address string, reader io.Reader) error {
 	raddr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
 		return err
@@ -41,10 +46,24 @@ func sender(ctx context.Context, address string, reader io.Reader) error {
 
 	go handleConn(conn, reader)
 
-	select {
-	case err = <-completed:
-		log.ERR.Printf("[completed]\n")
-		return err
+	for {
+		select {
+		case err = <-completed:
+			switch state {
+			case SENDING:
+				doneID := packet.SeqID(maxCount + 1)
+				finalDatagram := packet.CreateDatagram(doneID, packet.OffsetVal(0), []byte{})
+				finalDatagram.Headers().SetDone(true)
+				datagrams[doneID] = finalDatagram
+				dataChan <- finalDatagram
+				state = VALIDATING_END
+				continue
+
+			case VALIDATING_END:
+				log.ERR.Printf("[completed]\n")
+				return err
+			}
+		}
 	}
 }
 
@@ -64,8 +83,9 @@ func handleConn(conn *net.UDPConn, reader io.Reader) {
 	for sequence := 0; sequence*packet.PACKET_SIZE < len(compressedData); sequence++ {
 		seqID := packet.SeqID(sequence)
 		offset := packet.OffsetVal(sequence * packet.PACKET_SIZE)
-		datagram := packet.CreateDatagram(seqID, offset, compressedData[offset:])
-		datagrams[seqID] = datagram
+		doneDatagram := packet.CreateDatagram(seqID, offset, compressedData[offset:])
+		datagrams[seqID] = doneDatagram
+		dataChan <- doneDatagram
 	}
 
 	dataChan = make(chan packet.Datagram, len(datagrams))
@@ -82,7 +102,11 @@ func QueueData(dataChan shared.DataChannel) {
 		for _, datagram := range datagrams {
 			dataChan <- datagram
 		}
-		time.Sleep(queueTimeout)
+		if state == SENDING {
+			time.Sleep(sendTimeout)
+		} else if state == VALIDATING_END {
+			time.Sleep(doneTimeout)
+		}
 	}
 }
 
@@ -93,8 +117,6 @@ func SendData(conn io.Writer, dataChan shared.DataChannel) {
 			shared.SendDatagram(conn, datagram)
 			log.ERR.Printf("[send data] %d (%d)\n", datagram.Headers().Offset(), datagram.Headers().Length())
 			continue
-		case <-doneSendData:
-			return
 		}
 	}
 }
@@ -115,13 +137,13 @@ func HandleAcks(ackChan shared.AckChannel) {
 		case ack := <-ackChan:
 			log.ERR.Printf("[recv ack] %d\n", ack.Offset())
 			delete(datagrams, ack.Sequence())
-			if len(datagrams) == 0 {
-				doneSendData <- nil
-				doneRecvAck <- nil
+			if doneSending() {
+				completed <- nil
 			}
-		case <-doneRecvAck:
-			completed <- nil
-			return
 		}
 	}
+}
+
+func doneSending() bool {
+	return len(datagrams) == 0
 }

@@ -21,8 +21,8 @@ const (
 	ACCEPTED_OUT_ORDER = "ACCEPTED (out-of-order)"
 	IGNORED            = "IGNORED"
 
-	ACK_BUFFER      = 1024
-	DATAGRAM_BUFFER = 1024
+	ACK_BUFFER      = 4092
+	DATAGRAM_BUFFER = 4092
 )
 
 func NewDataChan() DataChannel {
