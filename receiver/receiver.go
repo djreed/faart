@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/djreed/faart/log"
 	"github.com/djreed/faart/packet"
@@ -11,17 +12,13 @@ import (
 )
 
 var (
+	finalTimeout = time.Duration(3000 * time.Millisecond)
+
 	datagrams = make(shared.DataMap)
-	ackChan   = make(chan AckPacket, shared.ACK_BUFFER)
-	doneData  = make(shared.DoneChan, 1)
+	dataChan  = shared.NewDataChan()
+	ackChan   = shared.NewAddressedAckChan()
+	finalChan = shared.NewErrChan()
 )
-
-type AckPacket struct {
-	addr *net.UDPAddr
-	ack  packet.Ack
-}
-
-type AckPacketChan chan AckPacket
 
 func receiver() error {
 	localAddr := new(net.UDPAddr)
@@ -34,12 +31,12 @@ func receiver() error {
 	splitAddr := strings.Split(conn.LocalAddr().String(), ":")
 	log.ERR.Printf("[bound] %s", splitAddr[len(splitAddr)-1])
 
-	go HandleDatagrams(conn, doneData)
+	go HandleDatagrams(conn, finalChan)
 	go SendAcks(conn, ackChan)
 
 	for {
 		select {
-		case <-doneData:
+		case <-finalChan:
 			log.ERR.Printf("[completed]\n")
 			byteData := flattenMapData(datagrams)
 			printData(byteData)
@@ -48,16 +45,17 @@ func receiver() error {
 	}
 }
 
-func HandleDatagrams(conn *net.UDPConn, doneChan shared.DoneChan) {
+func HandleDatagrams(conn *net.UDPConn, doneChan shared.ErrChannel) {
 	for {
 		datagram := packet.NewDatagram()
 		read, retAddr, _ := conn.ReadFromUDP(datagram)
 		if read > 0 {
-			needAck, final := AcceptDatagram(datagram)
+			needAck, finalPacket := AcceptDatagram(datagram)
 			if needAck {
-				ackChan <- AckPacket{addr: retAddr, ack: packet.CreateAck(datagram)}
+				ackChan <- packet.AddressedAck{Addr: retAddr, Ack: packet.CreateAck(datagram)}
 			}
-			if final {
+			if finalPacket {
+				// TODO what if the final ack doesn't make it
 				doneChan <- nil
 			}
 		}
@@ -82,14 +80,14 @@ func AcceptDatagram(datagram packet.Datagram) (bool, bool) {
 	} else {
 		log.ERR.Printf(RECV_TEMPLATE, datagram.Headers().Offset(), datagram.Headers().Length(), shared.IGNORED)
 	}
-	return !existing, false
+	return true, false
 }
 
-func SendAcks(conn *net.UDPConn, ackChan AckPacketChan) {
+func SendAcks(conn *net.UDPConn, ackChan shared.AddressedAckChannel) {
 	for {
 		select {
 		case ack := <-ackChan:
-			shared.SendAck(conn, ack.addr, ack.ack)
+			shared.SendAck(conn, ack.Addr, ack.Ack)
 			continue
 		}
 	}

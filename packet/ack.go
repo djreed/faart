@@ -1,9 +1,16 @@
 package packet
 
+import "net"
+
 var (
 	// Maximal UDP Ack Size
 	ACK_SIZE = SEQUENCE_SIZE + OFFSET_SIZE
 )
+
+type AddressedAck struct {
+	Ack
+	Addr *net.UDPAddr
+}
 
 type Ack []byte
 

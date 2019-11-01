@@ -17,8 +17,8 @@ const (
 )
 
 var (
-	sendTimeout = time.Duration(1000 * time.Millisecond)
-	doneTimeout = time.Duration(100 * time.Millisecond)
+	queueTimeout = time.Duration(1000 * time.Millisecond)
+	doneTimeout  = time.Duration(100 * time.Millisecond)
 
 	datagrams = make(shared.DataMap)
 
@@ -103,7 +103,7 @@ func QueueData(dataChan shared.DataChannel) {
 			dataChan <- datagram
 		}
 		if state == SENDING {
-			time.Sleep(sendTimeout)
+			time.Sleep(queueTimeout)
 		} else if state == VALIDATING_END {
 			time.Sleep(doneTimeout)
 		}
@@ -114,9 +114,13 @@ func SendData(conn io.Writer, dataChan shared.DataChannel) {
 	for {
 		select {
 		case datagram := <-dataChan:
-			shared.SendDatagram(conn, datagram)
-			log.ERR.Printf("[send data] %d (%d)\n", datagram.Headers().Offset(), datagram.Headers().Length())
-			continue
+			if err := shared.SendDatagram(conn, datagram); err != nil {
+				log.OUT.Panic(err)
+				return
+			} else {
+				log.ERR.Printf("[send data] %d (%d)\n", datagram.Headers().Offset(), datagram.Headers().Length())
+				continue
+			}
 		}
 	}
 }
