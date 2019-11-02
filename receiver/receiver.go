@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	finalTimeout = time.Duration(3000 * time.Millisecond)
+	readTimeout = time.Duration(2000 * time.Millisecond)
 
 	datagrams = make(shared.DataMap)
 	dataChan  = shared.NewDataChan()
@@ -46,17 +46,25 @@ func receiver() error {
 }
 
 func HandleDatagrams(conn *net.UDPConn, doneChan shared.ErrChannel) {
+	var lastPacketReceived time.Time
 	for {
 		datagram := packet.NewDatagram()
 		read, retAddr, _ := conn.ReadFromUDP(datagram)
 		if read > 0 {
+			lastPacketReceived = time.Now()
 			needAck, finalPacket := AcceptDatagram(datagram)
 			if needAck {
 				ackChan <- packet.AddressedAck{Addr: retAddr, Ack: packet.CreateAck(datagram)}
 			}
 			if finalPacket {
 				// TODO what if the final ack doesn't make it
+				// doneChan <- nil
+				// conn.Close()
+			}
+		} else {
+			if time.Since(lastPacketReceived) > readTimeout {
 				doneChan <- nil
+				conn.Close()
 			}
 		}
 	}

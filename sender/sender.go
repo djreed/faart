@@ -25,7 +25,7 @@ var (
 	dataChan = shared.NewDataChan()
 	ackChan  = shared.NewAckChan()
 
-	completed = make(shared.DoneChan, 1)
+	completed = make(shared.ErrChannel, 1)
 	state     = SENDING
 
 	maxCount = -1
