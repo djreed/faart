@@ -20,6 +20,9 @@ var (
 	queueTimeout = time.Duration(1000 * time.Millisecond)
 	doneTimeout  = time.Duration(100 * time.Millisecond)
 
+	// For now, don't wait on each send
+	sendTimeout = time.Duration(0) // time.Duration(1 * time.Microsecond)
+
 	datagrams = make(shared.DataMap)
 
 	dataChan = shared.NewDataChan()
@@ -115,10 +118,12 @@ func SendData(conn io.Writer, dataChan shared.DataChannel) {
 		select {
 		case datagram := <-dataChan:
 			if err := shared.SendDatagram(conn, datagram); err != nil {
-				log.OUT.Panic(err)
+				// TODO Handle errors
+				completed <- nil
 				return
 			} else {
 				log.ERR.Printf("[send data] %d (%d)\n", datagram.Headers().Offset(), datagram.Headers().Length())
+				time.Sleep(sendTimeout)
 				continue
 			}
 		}
