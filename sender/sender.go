@@ -113,7 +113,6 @@ func SendData(conn io.Writer, dataChan shared.DataChannel) {
 	for {
 		select {
 		case datagram := <-dataChan:
-			log.OUT.Println("Got a datagram to send")
 			if err := shared.SendDatagram(conn, datagram); err != nil {
 				// TODO Handle errors
 				completed <- nil
