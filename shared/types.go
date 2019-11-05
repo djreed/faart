@@ -16,6 +16,7 @@ type (
 )
 
 type DataMap map[packet.SeqID]packet.Datagram
+type AckMap map[packet.SeqID]bool
 
 const (
 	ACCEPTED_IN_ORDER  = "ACCEPTED (in-order)"
