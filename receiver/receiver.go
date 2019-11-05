@@ -12,8 +12,6 @@ import (
 )
 
 var (
-	readTimeout = time.Duration(5000 * time.Millisecond)
-
 	datagrams = make(shared.DataMap)
 	dataChan  = shared.NewAddressedDataChan()
 	ackChan   = shared.NewAddressedAckChan()
@@ -50,7 +48,6 @@ func ReceiveDatagrams(conn *net.UDPConn, dataChan shared.AddressedDataChannel) {
 	for {
 		datagram := packet.NewDatagram()
 		read, retAddr, err := conn.ReadFromUDP(datagram)
-		log.ERR.Printf("Received Datagram: %d %v\n", read, err)
 		if read > 0 && err == nil {
 			addressedDatagram := packet.AddressedDatagram{Addr: retAddr, Datagram: datagram}
 			dataChan <- addressedDatagram
@@ -84,7 +81,7 @@ func HandleDatagrams(conn *net.UDPConn, dataChan shared.AddressedDataChannel, do
 			continue
 
 		default:
-			if !lastPacketReceived.IsZero() && time.Since(lastPacketReceived) > readTimeout {
+			if !lastPacketReceived.IsZero() && time.Since(lastPacketReceived) > shared.RECV_READ_TIMEOUT {
 				doneChan <- nil
 				return
 			}

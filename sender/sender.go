@@ -17,13 +17,6 @@ const (
 )
 
 var (
-	queueTimeout = time.Duration(1000 * time.Millisecond)
-	doneTimeout  = time.Duration(100 * time.Millisecond)
-
-	// Number of sent "done" packets before closing
-	maxDoneCount    = 10
-	completeTimeout = doneTimeout * 10
-
 	// For now, don't wait on each send
 	sendTimeout = time.Duration(0) // time.Duration(1 * time.Microsecond)
 
@@ -65,7 +58,7 @@ func sender(address string, reader io.Reader) error {
 				dataChan <- finalDatagram
 				state = VALIDATING_END
 				go func() {
-					time.Sleep(completeTimeout)
+					time.Sleep(shared.SEND_FIN_TIMEOUT)
 					completed <- nil
 				}()
 				continue
@@ -114,9 +107,9 @@ func QueueData(dataChan shared.DataChannel) {
 			dataChan <- datagram
 		}
 		if state == SENDING {
-			time.Sleep(queueTimeout)
+			time.Sleep(shared.QUEUE_DATA_TIMEOUT)
 		} else if state == VALIDATING_END {
-			time.Sleep(doneTimeout)
+			time.Sleep(shared.QUEUE_FIN_TIMEOUT)
 		}
 	}
 }
