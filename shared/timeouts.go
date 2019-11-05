@@ -17,5 +17,5 @@ var (
 	SEND_FIN_TIMEOUT = 10 * QUEUE_FIN_TIMEOUT
 
 	// How long to wait on the receiver before completing if no data received
-	RECV_READ_TIMEOUT = 5 * QUEUE_DATA_TIMEOUT
+	RECV_READ_TIMEOUT = time.Duration(6000 * time.Millisecond)
 )
