@@ -3,6 +3,9 @@ package shared
 import "time"
 
 var (
+	// How long to wait between packet sends
+	SEND_PACKET_TIMEOUT = time.Duration(0)
+
 	// How long to wait before re-queueing packets
 	QUEUE_DATA_TIMEOUT = time.Duration(1500 * time.Millisecond)
 

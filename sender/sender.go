@@ -18,17 +18,12 @@ const (
 
 var (
 	// For now, don't wait on each send
-	sendTimeout = time.Duration(0) // time.Duration(1 * time.Microsecond)
-
 	datagrams = make(shared.DataMap)
-
-	dataChan = shared.NewDataChan()
-	ackChan  = shared.NewAckChan()
-
+	dataChan  = shared.NewDataChan()
+	ackChan   = shared.NewAckChan()
 	completed = make(shared.ErrChannel, 1)
 	state     = SENDING
-
-	maxCount = -1
+	maxCount  = -1
 )
 
 func sender(address string, reader io.Reader) error {
@@ -124,7 +119,7 @@ func SendData(conn io.Writer, dataChan shared.DataChannel) {
 				return
 			} else {
 				log.ERR.Printf("[send data] %d (%d)\n", datagram.Headers().Offset(), datagram.Headers().Length())
-				time.Sleep(sendTimeout)
+				time.Sleep(shared.SEND_PACKET_TIMEOUT)
 				continue
 			}
 		}
