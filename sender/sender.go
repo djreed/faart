@@ -20,6 +20,10 @@ var (
 	queueTimeout = time.Duration(1000 * time.Millisecond)
 	doneTimeout  = time.Duration(100 * time.Millisecond)
 
+	// Number of sent "done" packets before closing
+	maxDoneCount    = 10
+	completeTimeout = doneTimeout * 10
+
 	// For now, don't wait on each send
 	sendTimeout = time.Duration(0) // time.Duration(1 * time.Microsecond)
 
@@ -60,6 +64,10 @@ func sender(address string, reader io.Reader) error {
 				datagrams[doneID] = finalDatagram
 				dataChan <- finalDatagram
 				state = VALIDATING_END
+				go func() {
+					time.Sleep(completeTimeout)
+					completed <- nil
+				}()
 				continue
 
 			case VALIDATING_END:

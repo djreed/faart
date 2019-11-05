@@ -4,8 +4,14 @@ import (
 	"bytes"
 	"encoding/binary"
 	"math"
+	"net"
 	"unsafe"
 )
+
+type AddressedDatagram struct {
+	Datagram Datagram
+	Addr     *net.UDPAddr
+}
 
 const (
 	// Maximal UDP datagram size size

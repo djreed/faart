@@ -8,10 +8,11 @@ import (
 )
 
 type (
-	DataChannel         chan packet.Datagram
-	AckChannel          chan packet.Ack
-	AddressedAckChannel chan packet.AddressedAck
-	ErrChannel          chan error
+	DataChannel          chan packet.Datagram
+	AddressedDataChannel chan packet.AddressedDatagram
+	AckChannel           chan packet.Ack
+	AddressedAckChannel  chan packet.AddressedAck
+	ErrChannel           chan error
 )
 
 type DataMap map[packet.SeqID]packet.Datagram
@@ -21,8 +22,8 @@ const (
 	ACCEPTED_OUT_ORDER = "ACCEPTED (out-of-order)"
 	IGNORED            = "IGNORED"
 
-	ACK_BUFFER      = 4092
-	DATAGRAM_BUFFER = 4092
+	ACK_BUFFER      = 8184
+	DATAGRAM_BUFFER = 8184
 )
 
 func NewErrChan() ErrChannel {
@@ -31,6 +32,10 @@ func NewErrChan() ErrChannel {
 
 func NewDataChan() DataChannel {
 	return make(DataChannel, DATAGRAM_BUFFER)
+}
+
+func NewAddressedDataChan() AddressedDataChannel {
+	return make(AddressedDataChannel, DATAGRAM_BUFFER)
 }
 
 func NewAckChan() AckChannel {

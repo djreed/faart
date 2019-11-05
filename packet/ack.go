@@ -8,7 +8,7 @@ var (
 )
 
 type AddressedAck struct {
-	Ack
+	Ack  Ack
 	Addr *net.UDPAddr
 }
 

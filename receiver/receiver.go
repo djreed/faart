@@ -12,10 +12,10 @@ import (
 )
 
 var (
-	readTimeout = time.Duration(2000 * time.Millisecond)
+	readTimeout = time.Duration(5000 * time.Millisecond)
 
 	datagrams = make(shared.DataMap)
-	dataChan  = shared.NewDataChan()
+	dataChan  = shared.NewAddressedDataChan()
 	ackChan   = shared.NewAddressedAckChan()
 	finalChan = shared.NewErrChan()
 )
@@ -31,7 +31,8 @@ func receiver() error {
 	splitAddr := strings.Split(conn.LocalAddr().String(), ":")
 	log.ERR.Printf("[bound] %s", splitAddr[len(splitAddr)-1])
 
-	go HandleDatagrams(conn, finalChan)
+	go ReceiveDatagrams(conn, dataChan)
+	go HandleDatagrams(conn, dataChan, finalChan)
 	go SendAcks(conn, ackChan)
 
 	for {
@@ -45,16 +46,27 @@ func receiver() error {
 	}
 }
 
-func HandleDatagrams(conn *net.UDPConn, doneChan shared.ErrChannel) {
-	var lastPacketReceived time.Time
+func ReceiveDatagrams(conn *net.UDPConn, dataChan shared.AddressedDataChannel) {
 	for {
 		datagram := packet.NewDatagram()
-		read, retAddr, _ := conn.ReadFromUDP(datagram)
-		if read > 0 {
+		read, retAddr, err := conn.ReadFromUDP(datagram)
+		log.ERR.Printf("Received Datagram: %d %v\n", read, err)
+		if read > 0 && err == nil {
+			addressedDatagram := packet.AddressedDatagram{Addr: retAddr, Datagram: datagram}
+			dataChan <- addressedDatagram
+		}
+	}
+}
+
+func HandleDatagrams(conn *net.UDPConn, dataChan shared.AddressedDataChannel, doneChan shared.ErrChannel) {
+	var lastPacketReceived time.Time
+	for {
+		select {
+		case addressedDatagram := <-dataChan:
 			lastPacketReceived = time.Now()
-			needAck, finalPacket := AcceptDatagram(datagram)
-			ack := packet.CreateAck(datagram)
-			ackPacket := packet.AddressedAck{Addr: retAddr, Ack: ack}
+			needAck, finalPacket := AcceptDatagram(addressedDatagram.Datagram)
+			ack := packet.CreateAck(addressedDatagram.Datagram)
+			ackPacket := packet.AddressedAck{Addr: addressedDatagram.Addr, Ack: ack}
 			if needAck {
 				ackChan <- ackPacket
 			}
@@ -69,9 +81,12 @@ func HandleDatagrams(conn *net.UDPConn, doneChan shared.ErrChannel) {
 				ackChan <- ackPacket
 				doneChan <- nil
 			}
-		} else {
-			if time.Since(lastPacketReceived) > readTimeout {
+			continue
+
+		default:
+			if !lastPacketReceived.IsZero() && time.Since(lastPacketReceived) > readTimeout {
 				doneChan <- nil
+				return
 			}
 		}
 	}
