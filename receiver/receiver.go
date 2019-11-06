@@ -60,11 +60,11 @@ func ReceiveDatagrams(conn *net.UDPConn, dataChan shared.AddressedDataChannel) {
 }
 
 func HandleDatagrams(conn *net.UDPConn, dataChan shared.AddressedDataChannel, doneChan shared.ErrChannel) {
-	var lastPacketReceived time.Time
+	lastPacketReceived := time.After(time.Duration(1 * time.Minute))
 	for {
 		select {
 		case addressedDatagram := <-dataChan:
-			lastPacketReceived = time.Now()
+			lastPacketReceived = time.After(shared.RECV_READ_TIMEOUT)
 			needAck, finalPacket := AcceptDatagram(addressedDatagram.Datagram)
 			ack := packet.CreateAck(addressedDatagram.Datagram)
 			ackPacket := packet.AddressedAck{Addr: addressedDatagram.Addr, Ack: ack}
@@ -84,10 +84,12 @@ func HandleDatagrams(conn *net.UDPConn, dataChan shared.AddressedDataChannel, do
 			}
 			continue
 
-		default:
-			if !lastPacketReceived.IsZero() && receivedAllPackets() && time.Since(lastPacketReceived) > shared.RECV_READ_TIMEOUT {
+		case <-lastPacketReceived:
+			if receivedAllPackets() {
 				doneChan <- nil
 				return
+			} else {
+				lastPacketReceived = time.After(shared.RECV_READ_TIMEOUT)
 			}
 		}
 	}
