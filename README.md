@@ -41,3 +41,11 @@ experimenting with this functionality gave me worse performance in either poor
 bandwidth or in packet loss, so I took average-to-bad performance in both rather
 than sacrificing one for the other.
 
+## Testing
+
+Using https://github.com/tylertreat/comcast and a text file of Moby Dick I was
+able to test my transfer system's success/failure/speed under varying network
+speeds.
+
+I have unit tests for some of the more technical behavior (notably checksums
+and compression) but otherwise relied on end-to-end testing.

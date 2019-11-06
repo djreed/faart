@@ -26,7 +26,7 @@ vendor:
 	GO111MODULE=on go mod vendor
 
 bundle:
-	tar -czvf $(OUTFILE).tar.gz $(PROJECT_GOFILES) $(TEST_DATA) 3700recv 3700send
+	tar -czvf $(OUTFILE).tar.gz $(PROJECT_GOFILES) $(TEST_DATA) README.md
 
 copy:
 	scp -r $(OUTFILE).tar.gz reedda@gordon.ccs.neu.edu:/home/reedda/cs3700/project3/
