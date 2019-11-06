@@ -18,6 +18,8 @@ var (
 	finalChan = shared.NewErrChan()
 
 	nextOffset = uint32(0)
+
+	maxSeqNum uint32
 )
 
 func receiver() error {
@@ -83,7 +85,7 @@ func HandleDatagrams(conn *net.UDPConn, dataChan shared.AddressedDataChannel, do
 			continue
 
 		default:
-			if !lastPacketReceived.IsZero() && time.Since(lastPacketReceived) > shared.RECV_READ_TIMEOUT {
+			if !lastPacketReceived.IsZero() && receivedAllPackets() && time.Since(lastPacketReceived) > shared.RECV_READ_TIMEOUT {
 				doneChan <- nil
 				return
 			}
@@ -105,6 +107,8 @@ func AcceptDatagram(datagram packet.Datagram) (bool, bool) {
 			return false, false
 		}
 		datagrams[datagram.Headers().Sequence()] = datagram
+
+		maxSeqNum = uint32(datagram.Headers().Count())
 
 		offset := uint32(datagram.Headers().Offset())
 		length := uint32(datagram.Headers().Length())
@@ -129,6 +133,10 @@ func SendAcks(conn *net.UDPConn, ackChan shared.AddressedAckChannel) {
 			continue
 		}
 	}
+}
+
+func receivedAllPackets() bool {
+	return maxSeqNum != 0 && len(datagrams) == int(maxSeqNum)
 }
 
 func flattenMapData(datagramMap shared.DataMap) []byte {

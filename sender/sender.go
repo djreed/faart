@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"io/ioutil"
+	"math"
 	"net"
 	"time"
 
@@ -25,6 +26,8 @@ var (
 	ackChan   = shared.NewAckChan()
 	completed = make(shared.ErrChannel, 1)
 	state     = SENDING
+
+	packetCount packet.PacketCount
 )
 
 func sender(address string, reader io.Reader) error {
@@ -47,7 +50,7 @@ func sender(address string, reader io.Reader) error {
 			switch state {
 			case SENDING:
 				doneID := packet.SeqID(len(datagrams) + 1)
-				finalDatagram := packet.CreateDatagram(doneID, packet.OffsetVal(0), []byte{})
+				finalDatagram := packet.CreateDatagram(doneID, packet.OffsetVal(0), []byte{}, packetCount)
 				finalDatagram.Headers().SetDone(true)
 				datagrams[doneID] = finalDatagram
 				acked[doneID] = false
@@ -56,6 +59,7 @@ func sender(address string, reader io.Reader) error {
 				state = VALIDATING_END
 				go func() {
 					time.Sleep(shared.FIN_TIMEOUT_WAIT)
+					log.ERR.Println("WE REALLY SHOULD BE DONE ON THE SENDER'S SIDE")
 					completed <- nil
 				}()
 				continue
@@ -81,10 +85,11 @@ func handleConn(conn *net.UDPConn, reader io.Reader) {
 	}
 
 	// Populate packet map
+	packetCount = packet.PacketCount(math.Ceil(float64(len(compressedData)) / packet.PACKET_SIZE))
 	for sequence := 0; sequence*packet.PACKET_SIZE < len(compressedData); sequence++ {
 		seqID := packet.SeqID(sequence)
 		offset := packet.OffsetVal(sequence * packet.PACKET_SIZE)
-		datagram := packet.CreateDatagram(seqID, offset, compressedData[offset:])
+		datagram := packet.CreateDatagram(seqID, offset, compressedData[offset:], packetCount)
 		datagrams[seqID] = datagram
 	}
 

@@ -37,8 +37,12 @@ const (
 	DONE_FLAG_POINTER = LENGTH_POINTER + LENGTH_SIZE
 	DONE_FLAG_SIZE    = 1
 
+	// Packet count of the total file
+	COUNT_POINTER = DONE_FLAG_POINTER + DONE_FLAG_SIZE
+	COUNT_SIZE    = 4
+
 	// HEADER_SIZE = LENGTH_POINTER + LENGTH_SIZE
-	HEADER_SIZE = DONE_FLAG_POINTER + DONE_FLAG_SIZE
+	HEADER_SIZE = COUNT_POINTER + COUNT_SIZE
 
 	PACKET_SIZE = DATAGRAM_SIZE - HEADER_SIZE
 )
@@ -55,12 +59,13 @@ type OffsetVal uint32
 type ByteData []byte
 type PacketLen uint32
 type DoneFlag bool
+type PacketCount uint32
 
 func NewDatagram() Datagram {
 	return make([]byte, DATAGRAM_SIZE)
 }
 
-func CreateDatagram(sequence SeqID, offset OffsetVal, packet ByteData) Datagram {
+func CreateDatagram(sequence SeqID, offset OffsetVal, packet ByteData, packetCount PacketCount) Datagram {
 	dg := NewDatagram()
 
 	dg.Headers().SetSequence(sequence)
@@ -74,6 +79,7 @@ func CreateDatagram(sequence SeqID, offset OffsetVal, packet ByteData) Datagram 
 	packetSize := PacketLen(math.Min(float64(len(packet)), PACKET_SIZE))
 	dg.Headers().SetLength(packetSize)
 	dg.Headers().SetDone(false)
+	dg.Headers().SetCount(packetCount)
 
 	return dg
 }
@@ -158,6 +164,14 @@ func (h Header) Done() DoneFlag {
 }
 func (h Header) SetDone(done DoneFlag) {
 	copy(h[DONE_FLAG_POINTER:DONE_FLAG_POINTER+DONE_FLAG_SIZE], boolToBytes(bool(done)))
+}
+
+// Length of packet contents
+func (h Header) Count() PacketCount {
+	return PacketCount(bytesToUint32(h[COUNT_POINTER : COUNT_POINTER+COUNT_SIZE]))
+}
+func (h Header) SetCount(count PacketCount) {
+	copy(h[COUNT_POINTER:COUNT_POINTER+COUNT_SIZE], uint32ToBytes(uint32(count)))
 }
 
 /////////////////////
