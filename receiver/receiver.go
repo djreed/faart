@@ -16,6 +16,8 @@ var (
 	dataChan  = shared.NewAddressedDataChan()
 	ackChan   = shared.NewAddressedAckChan()
 	finalChan = shared.NewErrChan()
+
+	nextOffset = uint32(0)
 )
 
 func receiver() error {
@@ -103,7 +105,16 @@ func AcceptDatagram(datagram packet.Datagram) (bool, bool) {
 			return false, false
 		}
 		datagrams[datagram.Headers().Sequence()] = datagram
-		log.ERR.Printf(RECV_TEMPLATE, datagram.Headers().Offset(), datagram.Headers().Length(), shared.ACCEPTED_OUT_ORDER)
+
+		offset := uint32(datagram.Headers().Offset())
+		length := uint32(datagram.Headers().Length())
+		if nextOffset == offset {
+			log.ERR.Printf(RECV_TEMPLATE, datagram.Headers().Offset(), datagram.Headers().Length(), shared.ACCEPTED_IN_ORDER)
+			nextOffset = offset + length
+
+		} else {
+			log.ERR.Printf(RECV_TEMPLATE, datagram.Headers().Offset(), datagram.Headers().Length(), shared.ACCEPTED_OUT_ORDER)
+		}
 	} else {
 		log.ERR.Printf(RECV_TEMPLATE, datagram.Headers().Offset(), datagram.Headers().Length(), shared.IGNORED)
 	}
